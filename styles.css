@@ -509,7 +509,7 @@ body {
   border: none;
   outline: none;
   font-family: var(--font-serif);
-  font-size: 1.2rem;
+  font-size: 1.32rem;
   color: var(--text-main);
   padding: 0.2rem 0;
 }
@@ -948,11 +948,11 @@ body {
   transform: scale(1);
 }
 
-/* Scaled Up, Prominent Task Text (19px / 1.22rem) */
+/* Scaled Up, Prominent Task Text (~22px / 1.38rem) */
 .task-title {
   font-family: var(--font-serif);
-  font-size: 1.22rem;
-  line-height: 1.55;
+  font-size: 1.38rem;
+  line-height: 1.45;
   color: var(--text-main);
   word-break: break-word;
   position: relative;
@@ -1151,7 +1151,7 @@ body {
   border: 1px solid var(--border-strong);
   border-radius: 4px;
   font-family: var(--font-serif);
-  font-size: 1.18rem;
+  font-size: 1.32rem;
   line-height: 1.45;
   color: var(--text-main);
   padding: 0.35rem 0.6rem;
@@ -1321,7 +1321,8 @@ body {
     font-size: 2.1rem;
   }
   .task-title {
-    font-size: 1.1rem;
+    font-size: 1.35rem;
+    line-height: 1.45;
   }
   .task-actions {
     opacity: 0.8; /* visible on touch screens */
