@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -20,6 +21,35 @@
           <button type="button" class="add-task-btn" id="toggle-add-btn" title="Add intention (+ or /)" aria-label="Add task">
             <span class="add-btn-icon">＋</span>
           </button>
+        </div>
+
+        <div class="header-sync-area">
+          <button type="button" class="drive-sync-btn" id="drive-sync-btn" title="Google Drive Cloud Storage" aria-label="Google Drive Sync">
+            <span class="drive-sync-indicator" id="drive-sync-indicator"></span>
+            <svg class="drive-icon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4 0-2.05 1.53-3.76 3.56-3.97l1.07-.11.5-.95C8.08 7.14 9.94 6 12 6c2.62 0 4.88 1.86 5.39 4.43l.3 1.5 1.53.11c1.56.1 2.78 1.41 2.78 2.96 0 1.65-1.35 3-3 3z"/>
+            </svg>
+            <span class="drive-status-label" id="drive-status-label">Drive</span>
+          </button>
+
+          <!-- Drive Sync Popover Dropdown -->
+          <div class="sync-popover" id="sync-popover" style="display: none;">
+            <div class="sync-popover-header">
+              <div class="user-avatar" id="sync-user-avatar">G</div>
+              <div class="user-meta">
+                <span class="user-name font-serif" id="sync-user-name">Google Drive</span>
+                <span class="user-email" id="sync-user-email">Not connected</span>
+              </div>
+            </div>
+            <div class="sync-popover-status" id="sync-popover-status">
+              Local-only mode
+            </div>
+            <div class="sync-popover-actions">
+              <button type="button" class="sync-action-btn primary" id="sync-now-btn">Sync Now</button>
+              <button type="button" class="sync-action-btn" id="sync-settings-btn">Settings</button>
+              <button type="button" class="sync-action-btn danger" id="sync-signout-btn" style="display: none;">Sign Out</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -89,8 +119,51 @@
         <!-- Rendered dynamically -->
       </div>
     </div>
+
+    <!-- Google Drive Settings Modal -->
+    <div class="kanso-modal-overlay" id="drive-settings-modal" style="display: none;">
+      <div class="kanso-modal-card">
+        <div class="modal-card-header">
+          <h3 class="modal-title font-serif">Google Drive Sync</h3>
+          <button type="button" class="modal-close-icon" id="close-drive-modal-btn" aria-label="Close modal">✕</button>
+        </div>
+        <p class="modal-intro font-serif">
+          Save your intentions privately in your Google Drive to sync seamlessly across your phone, tablet, and computer.
+          Only your tasks data file is accessed.
+        </p>
+        <div class="modal-field">
+          <label for="drive-client-id-input" class="modal-label font-serif">Google OAuth 2.0 Client ID</label>
+          <input
+            type="text"
+            id="drive-client-id-input"
+            class="modal-text-input"
+            placeholder="e.g. 123456789-abc.apps.googleusercontent.com"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+        <div class="modal-guide-box">
+          <div class="guide-title font-serif">Quick Setup (Free & 2 mins):</div>
+          <ol class="guide-steps">
+            <li>Open <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a> and create a project (e.g. <em>Tasks</em>).</li>
+            <li>Enable <strong>Google Drive API</strong> under <em>APIs &amp; Services → Library</em>.</li>
+            <li>Configure <strong>OAuth Consent Screen</strong> (User Type: <em>External</em>). Add your Google email as a test user.</li>
+            <li>Go to <em>Credentials → Create Credentials → <strong>OAuth client ID</strong> (Web application)</em>.</li>
+            <li>Under <strong>Authorized JavaScript origins</strong>, add:
+              <br><code class="guide-code">http://localhost:8000</code> and/or <code class="guide-code">https://sweetgingkolove.github.io</code>
+            </li>
+            <li>Copy the <strong>Client ID</strong>, paste it above, and click Save.</li>
+          </ol>
+        </div>
+        <div class="modal-footer-actions">
+          <button type="button" class="modal-btn secondary" id="cancel-drive-modal-btn">Cancel</button>
+          <button type="button" class="modal-btn primary" id="save-drive-client-id-btn">Save &amp; Connect</button>
+        </div>
+      </div>
+    </div>
   </div>
 
+  <script src="drive-sync.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -43,7 +43,12 @@ An intentionally minimal, poetic to-do application designed with literary typogr
   - A single, elegant hairline sits directly below the title header, filling subtly with sumi ink as tasks are completed.
   - Warm cream paper texture (`#F8F6EE`) with a subtle 16px dot-grid overlay and sumi-ink palette.
 - **Ink Strikethrough Animation**: Fluid, brush-drawn strikethrough upon task completion with sumi-ink fill checkbox.
-- **Persistent & Offline-Ready**: Automatically synchronizes all tasks, tags, and categories to browser `localStorage`.
+- **Google Drive Cloud Storage & Cross-Device Sync**:
+  - Save and synchronize your intentions privately in your personal Google Drive account.
+  - **Least-Privilege Security**: Uses the restricted `drive.file` scope — the app can **only** read and write its own `tasks_data.json` file. It has **zero access** to any of your other Drive files, docs, or folders.
+  - **Stay Signed In**: Uses Google Identity Services (GIS) with silent background token refresh (`prompt: ''`), so you do not need to log in every time you visit.
+  - **Local-First Speed**: Instant offline loading from `localStorage` with non-blocking background synchronization.
+- **Persistent & Offline-Ready**: Automatically synchronizes all tasks, tags, and categories to browser `localStorage` and Google Drive.
 
 ---
 
@@ -81,3 +86,23 @@ Then visit:
 ```
 http://localhost:8000
 ```
+
+---
+
+## ☁️ Google Drive Cloud Sync Setup
+
+Tasks synchronizes your intentions to a personal file (`tasks_data.json`) in your Google Drive using least-privilege permissions.
+
+### Quick Setup (2 Minutes):
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a project (e.g. `Tasks`).
+2. Navigate to **APIs & Services → Library**, search for **Google Drive API**, and click **Enable**.
+3. Go to **APIs & Services → OAuth consent screen**:
+   - Choose **External**, enter an app name (e.g. *Tasks*), and add your Google email as a **Test User**.
+4. Go to **Credentials → Create Credentials → OAuth client ID**:
+   - Application type: **Web application**.
+   - Under **Authorized JavaScript origins**, add:
+     - `http://localhost:8000` (for local development)
+     - `https://sweetgingkolove.github.io` (for GitHub Pages)
+5. Copy your **Client ID** (looks like `123456789-xyz.apps.googleusercontent.com`).
+6. In **Tasks**, click the **Drive** pill in the top header, paste your Client ID, and click **Save & Connect**.
+7. Google will prompt authorization once — from then on, your session stays active automatically via silent token renewal!

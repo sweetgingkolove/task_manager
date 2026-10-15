@@ -1,0 +1,419 @@
+/**
+ * Google Drive Cloud Storage & Sync Engine for Tasks
+ * Features:
+ * - Google Identity Services (GIS) OAuth 2.0 Token Client
+ * - Least-privilege scope: drive.file (only touches tasks_data.json)
+ * - Persistent sessions: silent background token renewal (prompt: '')
+ * - Offline-first / local-first architecture with debounced cloud sync
+ */
+
+window.DriveSync = (() => {
+  'use strict';
+
+  // Storage Keys
+  const STORAGE_KEY_TOKEN = 'kanso_drive_token_v1';
+  const STORAGE_KEY_EXPIRY = 'kanso_drive_token_expiry_v1';
+  const STORAGE_KEY_USER = 'kanso_drive_user_v1';
+  const STORAGE_KEY_FILE_ID = 'kanso_drive_file_id_v1';
+  const STORAGE_KEY_CLIENT_ID = 'kanso_drive_client_id_v1';
+  const STORAGE_KEY_LAST_SYNC = 'kanso_drive_last_sync_v1';
+
+  // Default Client ID slot (can be overridden in settings or code)
+  const DEFAULT_CLIENT_ID = '';
+
+  // Scope: Least privilege - only files created by this app + user identity
+  const SCOPES = 'https://www.googleapis.com/auth/drive.file email profile';
+  const DATA_FILENAME = 'tasks_data.json';
+
+  let tokenClient = null;
+  let accessToken = null;
+  let tokenExpiresAt = 0;
+  let driveFileId = null;
+  let currentUser = null;
+  let currentStatus = 'unconfigured'; // 'unconfigured' | 'disconnected' | 'connecting' | 'syncing' | 'synced' | 'error' | 'offline'
+
+  let onStatusChangeCallback = null;
+  let onRemoteDataCallback = null;
+
+  let debounceTimer = null;
+  let pendingPayload = null;
+  let isSyncing = false;
+
+  // Initialization
+  function init({ onStatusChange, onRemoteData }) {
+    onStatusChangeCallback = onStatusChange || (() => {});
+    onRemoteDataCallback = onRemoteData || (() => {});
+
+    // Load cached credentials and state
+    accessToken = localStorage.getItem(STORAGE_KEY_TOKEN);
+    tokenExpiresAt = Number(localStorage.getItem(STORAGE_KEY_EXPIRY)) || 0;
+    driveFileId = localStorage.getItem(STORAGE_KEY_FILE_ID);
+
+    try {
+      const userStr = localStorage.getItem(STORAGE_KEY_USER);
+      if (userStr) currentUser = JSON.parse(userStr);
+    } catch (e) {}
+
+    const clientId = getClientId();
+    if (!clientId) {
+      updateStatus('unconfigured');
+      return;
+    }
+
+    // Try restoring session
+    setupGisClient(clientId, () => {
+      if (accessToken && currentUser) {
+        if (Date.now() < tokenExpiresAt - 60000) {
+          // Token is still valid
+          updateStatus('synced');
+          pullFromDrive();
+        } else {
+          // Token expired, attempt silent background refresh
+          silentRefresh();
+        }
+      } else {
+        updateStatus('disconnected');
+      }
+    });
+  }
+
+  function getClientId() {
+    return localStorage.getItem(STORAGE_KEY_CLIENT_ID) || DEFAULT_CLIENT_ID || '';
+  }
+
+  function setClientId(id) {
+    const cleanId = (id || '').trim();
+    if (cleanId) {
+      localStorage.setItem(STORAGE_KEY_CLIENT_ID, cleanId);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_CLIENT_ID);
+    }
+    setupGisClient(cleanId);
+  }
+
+  function setupGisClient(clientId, onReady) {
+    if (!clientId) {
+      updateStatus('unconfigured');
+      return;
+    }
+
+    // Wait for GIS script to load if not yet ready
+    const checkGis = () => {
+      if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+        try {
+          tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: clientId,
+            scope: SCOPES,
+            callback: handleTokenResponse
+          });
+          if (onReady) onReady();
+        } catch (err) {
+          console.error('[DriveSync] Error initializing token client:', err);
+          updateStatus('error', err.message);
+        }
+      } else {
+        setTimeout(checkGis, 150);
+      }
+    };
+
+    checkGis();
+  }
+
+  // Handle Token Received
+  async function handleTokenResponse(resp) {
+    if (resp.error) {
+      console.warn('[DriveSync] Token error:', resp);
+      if (resp.error === 'immediate_failed' || resp.error === 'popup_closed_by_user') {
+        updateStatus(accessToken ? 'synced' : 'disconnected');
+      } else {
+        updateStatus('error', resp.error_description || resp.error);
+      }
+      return;
+    }
+
+    accessToken = resp.access_token;
+    const expiresIn = Number(resp.expires_in) || 3599;
+    tokenExpiresAt = Date.now() + (expiresIn - 120) * 1000;
+
+    localStorage.setItem(STORAGE_KEY_TOKEN, accessToken);
+    localStorage.setItem(STORAGE_KEY_EXPIRY, String(tokenExpiresAt));
+
+    updateStatus('syncing');
+
+    // Fetch user profile if needed
+    if (!currentUser || !currentUser.email) {
+      await fetchUserProfile();
+    }
+
+    // Locate or create drive file, then pull
+    await ensureDriveFile();
+    await pullFromDrive();
+  }
+
+  // Silent Background Token Refresh (prompt: '')
+  function silentRefresh() {
+    if (!tokenClient) return;
+    const hint = currentUser ? currentUser.email : '';
+    try {
+      updateStatus('syncing');
+      tokenClient.requestAccessToken({ prompt: '', hint: hint || undefined });
+    } catch (e) {
+      console.warn('[DriveSync] Silent refresh failed, falling back to disconnected', e);
+      updateStatus('disconnected');
+    }
+  }
+
+  // Connect (Interactive)
+  function connect() {
+    const clientId = getClientId();
+    if (!clientId) {
+      updateStatus('unconfigured');
+      return false;
+    }
+
+    if (!tokenClient) {
+      setupGisClient(clientId, () => {
+        tokenClient.requestAccessToken({ prompt: 'select_account' });
+      });
+      return true;
+    }
+
+    updateStatus('connecting');
+    tokenClient.requestAccessToken({ prompt: 'select_account' });
+    return true;
+  }
+
+  // Disconnect
+  function disconnect() {
+    if (accessToken && window.google && google.accounts && google.accounts.oauth2) {
+      try {
+        google.accounts.oauth2.revoke(accessToken, () => {});
+      } catch (e) {}
+    }
+
+    accessToken = null;
+    tokenExpiresAt = 0;
+    driveFileId = null;
+    currentUser = null;
+
+    localStorage.removeItem(STORAGE_KEY_TOKEN);
+    localStorage.removeItem(STORAGE_KEY_EXPIRY);
+    localStorage.removeItem(STORAGE_KEY_USER);
+    localStorage.removeItem(STORAGE_KEY_FILE_ID);
+    localStorage.removeItem(STORAGE_KEY_LAST_SYNC);
+
+    updateStatus(getClientId() ? 'disconnected' : 'unconfigured');
+  }
+
+  // Fetch User Info
+  async function fetchUserProfile() {
+    try {
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: Bearer  }
+      });
+      if (res.ok) {
+        currentUser = await res.json();
+        localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(currentUser));
+      }
+    } catch (e) {
+      console.warn('[DriveSync] Could not fetch user profile', e);
+    }
+  }
+
+  // Ensure tasks_data.json exists in Drive
+  async function ensureDriveFile() {
+    if (driveFileId) return driveFileId;
+
+    try {
+      // Search for tasks_data.json
+      const query = encodeURIComponent(
+ame = '' and trashed = false);
+      const searchRes = await fetch(https://www.googleapis.com/drive/v3/files?q=&fields=files(id,name,modifiedTime), {
+        headers: { Authorization: Bearer  }
+      });
+
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        if (searchData.files && searchData.files.length > 0) {
+          driveFileId = searchData.files[0].id;
+          localStorage.setItem(STORAGE_KEY_FILE_ID, driveFileId);
+          return driveFileId;
+        }
+      }
+
+      // Not found, create it
+      const metadata = {
+        name: DATA_FILENAME,
+        description: 'Tasks Minimalist To-Do List Cloud Storage',
+        mimeType: 'application/json'
+      };
+
+      const initialContent = JSON.stringify({
+        tasks: [],
+        categories: [],
+        updatedAt: Date.now(),
+        version: 1
+      });
+
+      const boundary = '-------314159265358979323846';
+      const delimiter = \r\n--\r\n;
+      const closeDelim = \r\n----;
+
+      const multipartBody =
+        delimiter +
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+        JSON.stringify(metadata) +
+        delimiter +
+        'Content-Type: application/json\r\n\r\n' +
+        initialContent +
+        closeDelim;
+
+      const createRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: {
+          Authorization: Bearer ,
+          'Content-Type': multipart/related; boundary=
+        },
+        body: multipartBody
+      });
+
+      if (createRes.ok) {
+        const newFile = await createRes.json();
+        driveFileId = newFile.id;
+        localStorage.setItem(STORAGE_KEY_FILE_ID, driveFileId);
+        return driveFileId;
+      }
+    } catch (err) {
+      console.error('[DriveSync] Error ensuring Drive file:', err);
+    }
+    return null;
+  }
+
+  // Pull tasks from Drive
+  async function pullFromDrive() {
+    if (!accessToken || !driveFileId) return;
+
+    try {
+      updateStatus('syncing');
+      const res = await fetch(https://www.googleapis.com/drive/v3/files/?alt=media, {
+        headers: { Authorization: Bearer  }
+      });
+
+      if (res.status === 401) {
+        // Expired token, refresh
+        silentRefresh();
+        return;
+      }
+
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem(STORAGE_KEY_LAST_SYNC, String(Date.now()));
+        updateStatus('synced');
+        if (onRemoteDataCallback && data) {
+          onRemoteDataCallback(data);
+        }
+      } else {
+        updateStatus('error', Download error ());
+      }
+    } catch (err) {
+      console.warn('[DriveSync] Pull failed:', err);
+      updateStatus(navigator.onLine ? 'error' : 'offline');
+    }
+  }
+
+  // Push local data to Drive
+  async function pushToDrive(payload) {
+    if (!accessToken) {
+      pendingPayload = payload;
+      silentRefresh();
+      return;
+    }
+
+    if (!driveFileId) {
+      await ensureDriveFile();
+      if (!driveFileId) return;
+    }
+
+    isSyncing = true;
+    updateStatus('syncing');
+
+    try {
+      const content = JSON.stringify({
+        ...payload,
+        updatedAt: Date.now(),
+        version: 1
+      });
+
+      const res = await fetch(https://www.googleapis.com/upload/drive/v3/files/?uploadType=media, {
+        method: 'PATCH',
+        headers: {
+          Authorization: Bearer ,
+          'Content-Type': 'application/json; charset=UTF-8'
+        },
+        body: content
+      });
+
+      if (res.status === 401) {
+        silentRefresh();
+        return;
+      }
+
+      if (res.ok) {
+        localStorage.setItem(STORAGE_KEY_LAST_SYNC, String(Date.now()));
+        updateStatus('synced');
+      } else {
+        updateStatus('error', Upload error ());
+      }
+    } catch (err) {
+      console.warn('[DriveSync] Push error:', err);
+      updateStatus(navigator.onLine ? 'error' : 'offline');
+    } finally {
+      isSyncing = false;
+    }
+  }
+
+  // Debounced queue sync (e.g. called on task additions/modifications)
+  function queueSync(payload) {
+    pendingPayload = payload;
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (pendingPayload && accessToken) {
+        pushToDrive(pendingPayload);
+      }
+    }, 800);
+  }
+
+  function syncNow() {
+    if (pendingPayload) {
+      pushToDrive(pendingPayload);
+    } else {
+      pullFromDrive();
+    }
+  }
+
+  function updateStatus(status, detail) {
+    currentStatus = status;
+    if (onStatusChangeCallback) {
+      onStatusChangeCallback({
+        status,
+        detail,
+        user: currentUser,
+        lastSync: Number(localStorage.getItem(STORAGE_KEY_LAST_SYNC)) || 0,
+        clientId: getClientId()
+      });
+    }
+  }
+
+  return {
+    init,
+    connect,
+    disconnect,
+    syncNow,
+    queueSync,
+    getClientId,
+    setClientId,
+    getUserInfo: () => currentUser,
+    getStatus: () => currentStatus,
+    isConnected: () => !!(accessToken && currentUser)
+  };
+})();

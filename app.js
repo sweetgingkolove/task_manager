@@ -46,11 +46,31 @@
 
   const pagesCarouselEl = document.getElementById('pages-carousel');
 
+  // Google Drive Sync Elements
+  const driveSyncBtn = document.getElementById('drive-sync-btn');
+  const driveSyncIndicator = document.getElementById('drive-sync-indicator');
+  const driveStatusLabel = document.getElementById('drive-status-label');
+  const syncPopover = document.getElementById('sync-popover');
+  const syncUserAvatar = document.getElementById('sync-user-avatar');
+  const syncUserName = document.getElementById('sync-user-name');
+  const syncUserEmail = document.getElementById('sync-user-email');
+  const syncPopoverStatus = document.getElementById('sync-popover-status');
+  const syncNowBtn = document.getElementById('sync-now-btn');
+  const syncSettingsBtn = document.getElementById('sync-settings-btn');
+  const syncSignoutBtn = document.getElementById('sync-signout-btn');
+
+  const driveSettingsModal = document.getElementById('drive-settings-modal');
+  const driveClientIdInput = document.getElementById('drive-client-id-input');
+  const saveDriveClientIdBtn = document.getElementById('save-drive-client-id-btn');
+  const cancelDriveModalBtn = document.getElementById('cancel-drive-modal-btn');
+  const closeDriveModalBtn = document.getElementById('close-drive-modal-btn');
+
   // Initialization
   function init() {
     setupEventListeners();
     setupCarouselInteractions();
     renderAll();
+    setupDriveSync();
   }
 
   // Open / Close collapsible Add Task Form
@@ -130,9 +150,13 @@
         openAddForm();
       }
 
-      // Escape key cancels edit, tag input, or closes add form
+      // Escape key cancels modal, popover, edit, tag input, or closes add form
       if (e.key === 'Escape') {
-        if (activeInlineTagTaskId) {
+        if (driveSettingsModal && driveSettingsModal.style.display !== 'none') {
+          closeDriveSettingsModal();
+        } else if (syncPopover && syncPopover.style.display !== 'none') {
+          closeSyncPopover();
+        } else if (activeInlineTagTaskId) {
           activeInlineTagTaskId = null;
           renderPages();
         } else if (editingTaskId) {
@@ -439,8 +463,12 @@
   function saveCategories() {
     try {
       localStorage.setItem(STORAGE_CATS_KEY, JSON.stringify(categories));
+      localStorage.setItem('kanso_last_local_update', String(Date.now()));
     } catch (e) {
       console.warn('Could not write categories to localStorage', e);
+    }
+    if (window.DriveSync && window.DriveSync.isConnected()) {
+      window.DriveSync.queueSync({ tasks, categories, updatedAt: Date.now() });
     }
   }
 
@@ -477,8 +505,12 @@
   function saveTasks() {
     try {
       localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(tasks));
+      localStorage.setItem('kanso_last_local_update', String(Date.now()));
     } catch (e) {
       console.warn('Could not write tasks to localStorage', e);
+    }
+    if (window.DriveSync && window.DriveSync.isConnected()) {
+      window.DriveSync.queueSync({ tasks, categories, updatedAt: Date.now() });
     }
   }
 
@@ -1123,6 +1155,214 @@
     },
     clearTagFilter: () => clearTagFilter()
   };
+
+  // ========================================================
+  // Google Drive Cloud Sync Integration
+  // ========================================================
+  function setupDriveSync() {
+    if (!window.DriveSync) return;
+
+    window.DriveSync.init({
+      onStatusChange: handleDriveStatusChange,
+      onRemoteData: handleRemoteDriveData
+    });
+
+    if (driveSyncBtn) {
+      driveSyncBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const status = window.DriveSync.getStatus();
+        if (status === 'unconfigured') {
+          openDriveSettingsModal();
+        } else if (status === 'disconnected') {
+          window.DriveSync.connect();
+        } else {
+          toggleSyncPopover();
+        }
+      });
+    }
+
+    if (syncNowBtn) {
+      syncNowBtn.addEventListener('click', () => {
+        const status = window.DriveSync.getStatus();
+        if (status === 'unconfigured') {
+          closeSyncPopover();
+          openDriveSettingsModal();
+        } else if (status === 'disconnected') {
+          closeSyncPopover();
+          window.DriveSync.connect();
+        } else {
+          window.DriveSync.syncNow();
+        }
+      });
+    }
+
+    if (syncSettingsBtn) {
+      syncSettingsBtn.addEventListener('click', () => {
+        closeSyncPopover();
+        openDriveSettingsModal();
+      });
+    }
+
+    if (syncSignoutBtn) {
+      syncSignoutBtn.addEventListener('click', () => {
+        closeSyncPopover();
+        window.DriveSync.disconnect();
+      });
+    }
+
+    // Modal Events
+    if (closeDriveModalBtn) {
+      closeDriveModalBtn.addEventListener('click', closeDriveSettingsModal);
+    }
+
+    if (cancelDriveModalBtn) {
+      cancelDriveModalBtn.addEventListener('click', closeDriveSettingsModal);
+    }
+
+    if (saveDriveClientIdBtn) {
+      saveDriveClientIdBtn.addEventListener('click', () => {
+        const id = driveClientIdInput ? driveClientIdInput.value.trim() : '';
+        if (id) {
+          window.DriveSync.setClientId(id);
+          closeDriveSettingsModal();
+          window.DriveSync.connect();
+        }
+      });
+    }
+
+    if (driveSettingsModal) {
+      driveSettingsModal.addEventListener('click', (e) => {
+        if (e.target === driveSettingsModal) {
+          closeDriveSettingsModal();
+        }
+      });
+    }
+
+    // Close popover on click outside
+    document.addEventListener('click', (e) => {
+      if (syncPopover && syncPopover.style.display !== 'none') {
+        if (!syncPopover.contains(e.target) && !driveSyncBtn.contains(e.target)) {
+          closeSyncPopover();
+        }
+      }
+    });
+  }
+
+  function handleDriveStatusChange({ status, detail, user, lastSync, clientId }) {
+    if (!driveSyncBtn) return;
+
+    driveSyncBtn.classList.remove('synced', 'syncing', 'error');
+
+    if (status === 'unconfigured') {
+      driveSyncIndicator.style.backgroundColor = 'var(--text-subtle)';
+      driveStatusLabel.textContent = 'Drive';
+      driveSyncBtn.setAttribute('title', 'Connect Google Drive (Click to configure)');
+      if (syncPopoverStatus) syncPopoverStatus.textContent = 'Setup required: enter Google OAuth Client ID.';
+      if (syncSignoutBtn) syncSignoutBtn.style.display = 'none';
+      if (syncNowBtn) syncNowBtn.textContent = 'Setup Drive';
+    } else if (status === 'disconnected') {
+      driveSyncIndicator.style.backgroundColor = 'var(--text-subtle)';
+      driveStatusLabel.textContent = 'Connect';
+      driveSyncBtn.setAttribute('title', 'Click to connect Google Drive');
+      if (syncPopoverStatus) syncPopoverStatus.textContent = 'Disconnected. Tasks saved locally.';
+      if (syncSignoutBtn) syncSignoutBtn.style.display = 'none';
+      if (syncNowBtn) syncNowBtn.textContent = 'Connect Drive';
+    } else if (status === 'connecting' || status === 'syncing') {
+      driveSyncBtn.classList.add('syncing');
+      driveStatusLabel.textContent = 'Syncing...';
+      driveSyncBtn.setAttribute('title', 'Syncing with Google Drive...');
+      if (syncPopoverStatus) syncPopoverStatus.textContent = 'Syncing tasks with Google Drive...';
+    } else if (status === 'synced') {
+      driveSyncBtn.classList.add('synced');
+      driveStatusLabel.textContent = 'Synced';
+      const syncTimeStr = lastSync ? new Date(lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'just now';
+      driveSyncBtn.setAttribute('title', `Synced to Google Drive (${syncTimeStr})`);
+      if (syncPopoverStatus) syncPopoverStatus.textContent = `All tasks saved in Google Drive (${syncTimeStr}).`;
+      if (syncSignoutBtn) syncSignoutBtn.style.display = 'block';
+      if (syncNowBtn) syncNowBtn.textContent = 'Sync Now';
+    } else if (status === 'error') {
+      driveSyncBtn.classList.add('error');
+      driveStatusLabel.textContent = 'Error';
+      driveSyncBtn.setAttribute('title', detail || 'Google Drive sync error');
+      if (syncPopoverStatus) syncPopoverStatus.textContent = detail ? `Sync error: ${detail}` : 'Could not reach Google Drive.';
+    } else if (status === 'offline') {
+      driveSyncIndicator.style.backgroundColor = 'var(--accent-highlight)';
+      driveStatusLabel.textContent = 'Offline';
+      driveSyncBtn.setAttribute('title', 'Offline. Changes saved locally.');
+      if (syncPopoverStatus) syncPopoverStatus.textContent = 'Device is offline. Changes saved locally.';
+    }
+
+    // Update User info in popover
+    if (user && user.email) {
+      if (syncUserName) syncUserName.textContent = user.name || 'Google Account';
+      if (syncUserEmail) syncUserEmail.textContent = user.email;
+      if (syncUserAvatar) {
+        if (user.picture) {
+          syncUserAvatar.innerHTML = `<img src="${user.picture}" alt="${escapeHtml(user.name)}" />`;
+        } else {
+          syncUserAvatar.textContent = (user.name || user.email || 'G').charAt(0).toUpperCase();
+        }
+      }
+    } else {
+      if (syncUserName) syncUserName.textContent = 'Google Drive';
+      if (syncUserEmail) syncUserEmail.textContent = clientId ? 'Not connected' : 'Not configured';
+      if (syncUserAvatar) syncUserAvatar.textContent = 'G';
+    }
+  }
+
+  function handleRemoteDriveData(remoteData) {
+    if (!remoteData || !Array.isArray(remoteData.tasks)) return;
+
+    const remoteTasks = remoteData.tasks;
+    if (remoteTasks.length > 0) {
+      const localUpdate = Number(localStorage.getItem('kanso_last_local_update')) || 0;
+      const remoteUpdate = Number(remoteData.updatedAt) || 0;
+
+      // Only override if remote is newer or local is initial default
+      if (remoteUpdate >= localUpdate || tasks === INITIAL_TASKS) {
+        tasks = remoteTasks;
+        if (Array.isArray(remoteData.categories) && remoteData.categories.length === 3) {
+          categories = remoteData.categories;
+          try {
+            localStorage.setItem(STORAGE_CATS_KEY, JSON.stringify(categories));
+          } catch (e) {}
+        }
+        try {
+          localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(tasks));
+        } catch (e) {}
+        renderAll();
+      }
+    } else if (tasks.length > 0) {
+      // Remote was empty, upload local tasks
+      window.DriveSync.queueSync({ tasks, categories, updatedAt: Date.now() });
+    }
+  }
+
+  function toggleSyncPopover() {
+    if (!syncPopover) return;
+    if (syncPopover.style.display === 'none' || !syncPopover.style.display) {
+      syncPopover.style.display = 'block';
+    } else {
+      closeSyncPopover();
+    }
+  }
+
+  function closeSyncPopover() {
+    if (syncPopover) syncPopover.style.display = 'none';
+  }
+
+  function openDriveSettingsModal() {
+    if (!driveSettingsModal) return;
+    if (driveClientIdInput) {
+      driveClientIdInput.value = window.DriveSync ? window.DriveSync.getClientId() : '';
+    }
+    driveSettingsModal.style.display = 'flex';
+    if (driveClientIdInput) driveClientIdInput.focus();
+  }
+
+  function closeDriveSettingsModal() {
+    if (driveSettingsModal) driveSettingsModal.style.display = 'none';
+  }
 
   // Run
   document.addEventListener('DOMContentLoaded', init);

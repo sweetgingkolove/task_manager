@@ -54,6 +54,10 @@ body {
 }
 
 .header-branding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   margin-bottom: 0.75rem;
 }
 
@@ -1331,4 +1335,355 @@ body {
     padding: 0.3rem 0.55rem;
     font-size: 0.88rem;
   }
+}
+
+/* ========================================================
+   Google Drive Cloud Sync & Header Status Pill
+   ======================================================== */
+.header-sync-area {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.drive-sync-btn {
+  background: transparent;
+  border: 1px solid var(--border-hairline);
+  border-radius: 20px;
+  padding: 0.35rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.drive-sync-btn:hover {
+  border-color: var(--accent-terracotta);
+  color: var(--accent-terracotta);
+  background: rgba(200, 90, 50, 0.05);
+}
+
+.drive-sync-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-subtle);
+  display: inline-block;
+  transition: background-color 0.25s ease;
+}
+
+.drive-sync-btn.synced {
+  border-color: rgba(22, 163, 74, 0.35);
+  color: var(--text-main);
+}
+
+.drive-sync-btn.synced .drive-sync-indicator {
+  background: #16A34A;
+}
+
+.drive-sync-btn.syncing .drive-sync-indicator {
+  background: var(--accent-highlight);
+  animation: syncPulse 1s infinite alternate;
+}
+
+.drive-sync-btn.error .drive-sync-indicator {
+  background: #DC2626;
+}
+
+@keyframes syncPulse {
+  from { opacity: 0.3; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1.2); }
+}
+
+.drive-icon {
+  display: inline-block;
+  opacity: 0.8;
+}
+
+.drive-status-label {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* Drive Sync Popover Dropdown */
+.sync-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 270px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  box-shadow: 0 8px 26px rgba(32, 30, 27, 0.09);
+  padding: 0.95rem;
+  z-index: 200;
+  font-family: var(--font-sans);
+  animation: modalFade 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sync-popover-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.65rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--border-hairline);
+  color: var(--text-main);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-meta {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-email {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-popover-status {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 0.85rem;
+  line-height: 1.4;
+}
+
+.sync-popover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sync-action-btn {
+  background: transparent;
+  border: 1px solid var(--border-hairline);
+  border-radius: 6px;
+  padding: 0.42rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  color: var(--text-main);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.sync-action-btn:hover {
+  background: rgba(32, 30, 27, 0.05);
+  border-color: var(--border-strong);
+}
+
+.sync-action-btn.primary {
+  background: var(--accent-ink);
+  color: var(--bg-canvas);
+  border-color: var(--accent-ink);
+  font-weight: 500;
+}
+
+.sync-action-btn.primary:hover {
+  opacity: 0.9;
+}
+
+.sync-action-btn.danger {
+  color: #B91C1C;
+  border-color: rgba(185, 28, 28, 0.2);
+}
+
+.sync-action-btn.danger:hover {
+  background: rgba(185, 28, 28, 0.08);
+}
+
+/* ========================================================
+   Google Drive Settings Modal
+   ======================================================== */
+.kanso-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(32, 30, 27, 0.38);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+  padding: 1.25rem;
+  animation: modalFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.kanso-modal-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 490px;
+  box-shadow: 0 16px 42px rgba(32, 30, 27, 0.15);
+  padding: 1.5rem 1.65rem;
+}
+
+.modal-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.modal-card-header .modal-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.modal-intro {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 1.15rem;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1.15rem;
+}
+
+.modal-label {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.modal-text-input {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 0.55rem 0.8rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-main);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.2s ease;
+}
+
+.modal-text-input:focus {
+  border-color: var(--accent-terracotta);
+  box-shadow: 0 0 0 2px rgba(200, 90, 50, 0.15);
+}
+
+.modal-guide-box {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+  padding: 0.9rem 1.05rem;
+  margin-bottom: 1.35rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.guide-title {
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 0.35rem;
+}
+
+.guide-steps {
+  padding-left: 1.2rem;
+}
+
+.guide-steps li {
+  margin-bottom: 0.3rem;
+}
+
+.guide-steps a {
+  color: var(--accent-terracotta);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.guide-code {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  background: rgba(32, 30, 27, 0.07);
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  color: var(--text-main);
+  display: inline-block;
+  margin-top: 0.15rem;
+}
+
+.modal-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.modal-btn {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  padding: 0.5rem 1.15rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.modal-btn.primary {
+  background: var(--accent-terracotta);
+  color: #FFFFFF;
+  font-weight: 500;
+}
+
+.modal-btn.primary:hover {
+  background: #B34822;
+}
+
+.modal-btn.secondary {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--text-muted);
+}
+
+.modal-btn.secondary:hover {
+  background: rgba(32, 30, 27, 0.05);
+  color: var(--text-main);
 }
