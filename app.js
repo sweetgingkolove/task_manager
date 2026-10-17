@@ -66,7 +66,10 @@
   const closeDriveModalBtn = document.getElementById('close-drive-modal-btn');
 
   // Initialization
+  let isInitialized = false;
   function init() {
+    if (isInitialized) return;
+    isInitialized = true;
     setupEventListeners();
     setupCarouselInteractions();
     renderAll();
@@ -1170,11 +1173,9 @@
     if (driveSyncBtn) {
       driveSyncBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const status = window.DriveSync.getStatus();
-        if (status === 'unconfigured') {
+        const clientId = window.DriveSync ? window.DriveSync.getClientId() : '';
+        if (!clientId) {
           openDriveSettingsModal();
-        } else if (status === 'disconnected') {
-          window.DriveSync.connect();
         } else {
           toggleSyncPopover();
         }
@@ -1353,11 +1354,14 @@
 
   function openDriveSettingsModal() {
     if (!driveSettingsModal) return;
+    closeSyncPopover();
     if (driveClientIdInput) {
       driveClientIdInput.value = window.DriveSync ? window.DriveSync.getClientId() : '';
     }
     driveSettingsModal.style.display = 'flex';
-    if (driveClientIdInput) driveClientIdInput.focus();
+    if (driveClientIdInput) {
+      setTimeout(() => driveClientIdInput.focus(), 50);
+    }
   }
 
   function closeDriveSettingsModal() {
@@ -1365,8 +1369,9 @@
   }
 
   // Run
-  document.addEventListener('DOMContentLoaded', init);
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
     init();
   }
 })();
